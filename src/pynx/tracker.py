@@ -44,9 +44,15 @@ class BleakRunner(threading.Thread):
         self._update = update_cb
         self._running = False
         self.client: BleakClient
+        self.offset = [0, 0, 0, 0]
+        self.quat = [0, 0, 0, 0]
 
         # set up your OSC client once, reuse on every packet
         self.osc_client = udp_client.SimpleUDPClient(OSC_IP, OSC_PORT)
+
+    def reset(self):
+        for idx, q in enumerate(self.quat):
+            self.offset[idx] = q
 
     def run(self):
         asyncio.set_event_loop(self.loop)
@@ -70,6 +76,9 @@ class BleakRunner(threading.Thread):
             # register BLE notification handler
             def _on_notify(_handle, data):
                 quat = parse_packet(data)
+                for idx, q in enumerate(self.offset):
+                    quat[idx] -= q
+                self.quat = quat
 
                 # 1) update the Tk label
                 self._update(quat)
@@ -112,10 +121,16 @@ class Window(tk.Tk):
         self.btn = tk.Button(self, text="Start", command=self.toggle_stream)
         self.btn.pack(padx=20, pady=5)
 
+        self.btn2 = tk.Button(self, text="Reset", command=self.reset)
+        self.btn2.pack(padx=20, pady=5)
+
         self.ble = BleakRunner(self.update_quat, address)
         self.ble.start()
 
         self._streaming = False
+
+    def reset(self):
+        self.ble.reset()
 
     def toggle_stream(self):
         if not self._streaming:
@@ -130,8 +145,14 @@ class Window(tk.Tk):
     def update_quat(self, quat):
         # BLE thread → Tk thread
         text = "quat=[" + ", ".join(f"{x:.2f}" for x in quat) + "]"
+        # this way of updating label text is necessary, persumably due to some async/thread shenanigans
         self.after(0, lambda: self.lbl.config(text=text))
 
     def on_close(self):
         self.ble.shutdown()
         self.destroy()
+
+
+if __name__ == "__main__":
+    win = Window("")
+    win.mainloop()
