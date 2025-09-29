@@ -11,6 +11,8 @@ from pythonosc import udp_client
 DEVICE_NAME = "Nx Tracker 2"
 START_UUID = "0000a011-5761-7665-7341-7564696f4c74"
 STREAM_UUID = "0000a015-5761-7665-7341-7564696f4c74"
+BATTERY_UUID = "00002a19-0000-1000-8000-00805f9b34fb"
+RESET = "0000a011-5761-7665-7341-7564696f4c74"
 
 # OSC target (any OSC server listening here will get the /quat messages)
 OSC_IP = "127.0.0.1"
@@ -37,22 +39,24 @@ async def get_nx_tracker() -> str:
 
 
 class BleakRunner(threading.Thread):
-    def __init__(self, update_cb, address):
+    def __init__(self, address, update_cb, update_batt):
         super().__init__(daemon=True)
         self.loop = asyncio.new_event_loop()
         self.address = address
         self._update = update_cb
+        self._batt_update = update_batt
         self._running = False
         self.client: BleakClient
-        self.offset = [0, 0, 0, 0]
-        self.quat = [0, 0, 0, 0]
 
         # set up your OSC client once, reuse on every packet
         self.osc_client = udp_client.SimpleUDPClient(OSC_IP, OSC_PORT)
 
     def reset(self):
-        for idx, q in enumerate(self.quat):
-            self.offset[idx] = q
+        async def _reset():
+            await self.client.write_gatt_char(RESET, b"\x32\x00\x00\x00\x00")
+            await self.client.write_gatt_char(RESET, b"\x32\x00\x00\x00\x01")
+
+        asyncio.run_coroutine_threadsafe(_reset(), self.loop)
 
     def run(self):
         asyncio.set_event_loop(self.loop)
@@ -76,9 +80,6 @@ class BleakRunner(threading.Thread):
             # register BLE notification handler
             def _on_notify(_handle, data):
                 quat = parse_packet(data)
-                for idx, q in enumerate(self.offset):
-                    quat[idx] -= q
-                self.quat = quat
 
                 # 1) update the Tk label
                 self._update(quat)
@@ -87,7 +88,19 @@ class BleakRunner(threading.Thread):
                 #    payload is four floats
                 self.osc_client.send_message("/quat", quat)
 
+            def _batt_notify(_handle, data):
+                batt = int.from_bytes(data)
+                self._batt_update(batt)
+
             await self.client.start_notify(STREAM_UUID, _on_notify)
+            await self.client.start_notify(BATTERY_UUID, _batt_notify)
+
+            # battery level notification rate is very low, so we get the initial value
+            # manually, without waiting for next update. otherwise it stays empty for a few
+            # seconds after connection
+            self._batt_update(
+                int.from_bytes(await self.client.read_gatt_char(BATTERY_UUID))
+            )
 
         asyncio.run_coroutine_threadsafe(_go(), self.loop)
 
@@ -118,13 +131,16 @@ class Window(tk.Tk):
         self.lbl = tk.Label(self, text="quat=[----, ----, ----, ----]")
         self.lbl.pack(padx=20, pady=10)
 
+        self.lbl2 = tk.Label(self, text="----")
+        self.lbl2.pack(padx=20, pady=10)
+
         self.btn = tk.Button(self, text="Start", command=self.toggle_stream)
         self.btn.pack(padx=20, pady=5)
 
         self.btn2 = tk.Button(self, text="Reset", command=self.reset)
         self.btn2.pack(padx=20, pady=5)
 
-        self.ble = BleakRunner(self.update_quat, address)
+        self.ble = BleakRunner(address, self.update_quat, self.update_batt)
         self.ble.start()
 
         self._streaming = False
@@ -141,6 +157,9 @@ class Window(tk.Tk):
             self.ble.stop_stream()
             self.btn.config(text="Start")
             self._streaming = False
+
+    def update_batt(self, batt):
+        self.after(0, lambda: self.lbl2.config(text=f"{batt}%"))
 
     def update_quat(self, quat):
         # BLE thread → Tk thread
