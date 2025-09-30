@@ -42,7 +42,6 @@ wheels = [
 
 [[package]]
 name = "pynx"
-version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "bleak" },
@@ -51,8 +50,8 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "bleak", specifier = ">=1.1.1" },
-    { name = "python-osc", specifier = ">=1.9.3" },
+    { name = "bleak", specifier = ">=1.1.1,<1.2" },
+    { name = "python-osc", specifier = ">=1.9.3,<1.10" },
 ]
 
 [[package]]
