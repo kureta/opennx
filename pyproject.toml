@@ -27,4 +27,5 @@ cache-keys = [ { file = "pyproject.toml" }, { git = { commit = true, tags = true
 [tool.uv-dynamic-versioning]
 fallback-version = "0.0.0"
 vcs = "git"
-style = "semver"
+style = "pep440"
+bump = true
