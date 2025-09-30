@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 requires = [ "hatchling", "uv-dynamic-versioning" ]
 
 [project]
-name = "pynx"
+name = "opennx"
 description = "A python library for getting orientation data from Nx Tracker 2 via bluetooth."
 readme = "README.md"
 authors = [
@@ -20,3 +20,9 @@ dependencies = [
 
 [tool.hatch.version]
 source = "uv-dynamic-versioning"
+
+[tool.uv]
+cache-keys = [ { file = "pyproject.toml" }, { git = { commit = true, tags = true } } ]
+
+[tool.uv-dynamic-versioning]
+fallback-version = "0.0.0"

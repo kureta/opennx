@@ -41,7 +41,7 @@ wheels = [
 ]
 
 [[package]]
-name = "pynx"
+name = "opennx"
 source = { editable = "." }
 dependencies = [
     { name = "bleak" },
